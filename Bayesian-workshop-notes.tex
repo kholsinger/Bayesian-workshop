@@ -1,0 +1,241 @@
+\documentclass[titlepage,landscape,pdftex]{seminar}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\hypersetup{
+  pdftitle={Introduction to Bayesian inference for evolutionists \& ecologists}
+  pdfauthor={Kent E. Holsinger, University of Connecticut}
+  pdfpagemode={FullScreen},
+  pdfborder={0 0 0}
+}
+\usepackage{epstopdf}
+
+\slideframe{none}
+\pagestyle{empty}
+
+\newcommand{\heading}[1]{{\color{red}\large\bf#1}}
+
+
+\title{\color{red}Introduction to Bayesian inference for evolutionists \& ecologists}
+\author{Kent E. Holsinger \\
+  Department of Ecology \& Evolutionary Biology, U-3043 \\
+  University of Connecticut \\
+  Storrs, CT 06269-3043}
+\date{\copyright{} 2020 by Kent E. Holsinger}
+
+\begin{document}
+
+\begin{slide}
+
+  \begin{center}\maketitle\end{center}
+
+  \vfill
+
+\end{slide}
+
+\begin{slide}
+  \heading{Why be Bayesian?}
+
+  How worried should you be if you get a positive test for COVID-19?
+
+  \begin{itemize}
+
+  \item Abbott Alinity SARS-CoV2 Assay
+
+    \begin{tabular}{lcc}
+      \hline\hline
+      SARS-CoV-2 concntration & Number tested & Number detected \\
+      \hline
+      1X to 2X LOD & 20 & 20 \\
+      20X LOD & 20 & 20 \\
+      Negative & 31 & 0 \\
+      \hline
+    \end{tabular}
+    
+  \item  Do you believe it's perfect?
+
+    \begin{itemize}
+
+    \item $\mbox{P}(\mbox{true positive}) = 0.976 (0.913, 1.000)$
+
+    \item $\mbox{P}(\mbox{true negative}) = 0.970 (0.888, 0.999)$
+      
+    \end{itemize}
+    
+  \end{itemize}
+  \vfill
+
+\end{slide}
+
+\begin{slide}
+  \heading{Why be Bayesian?}
+
+  \begin{itemize}
+    
+  \item Positive test $\ne$ carrying virus
+
+    \begin{itemize}
+
+    \item Positive and carrying virus (true positive)
+
+    \item Positive and not carrying virus (false positive)
+
+    \end{itemize}
+
+  \item Assume prevalence (proportion of population carrying virus)
+    is 3\% and imagine that we test 1000 people
+
+  \end{itemize}
+
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{How much should I worry?}
+
+  {\small
+    \begin{eqnarray*}
+      N_{\mbox{infected}} &=& 1000 \times 0.03  = 30 \\
+      N_{\mbox{not infected}} & = & 1000 \times 0.97 = 970 \\
+      N_{\mbox{infected and positive}} &=& N_{\mbox{infected}}\times
+                                           0.976 \\
+      N_{\mbox{not infected and positive}} &=&
+                                               N_{\mbox{not infected}}\times
+                                               0.030
+    \end{eqnarray*}
+  }
+
+  \vfill
+
+\end{slide}
+
+\begin{slide}
+  \heading{How much should I worry?}
+
+  {\small
+    \begin{eqnarray*}
+      N_{\mbox{infected}} &=& 1000 \times 0.03  = 30 \\
+      N_{\mbox{not infected}} & = & 1000 \times 0.97 = 970 \\
+      N_{\mbox{infected and positive}} &=& N_{\mbox{infected}}\times
+                                           0.976 \\
+      N_{\mbox{not infected and positive}} &=&
+        N_{\mbox{not infected}}\times 0.030 \\
+      \frac{N_{\mbox{infected and positive}}}{N_{\mbox{{positive}}}} &=&
+        \frac{30\times 0.976}{30\times 0.976 + 970\times 0.030} \\
+      \\
+        &=& \frac{29.3}{29.3 + 29.1} \\
+      \\
+        &=& 0.502
+    \end{eqnarray*}
+  }
+
+  {\color{red}\bf
+    Coin flip on whether you have COVID}
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{Bayes' Rule}
+
+  \begin{eqnarray*}
+  \mbox{P}(\mbox{infected}|\mbox{positive}) &=&
+  \frac{\mbox{P}(\mbox{positive}|\mbox{infected})}
+            {\mbox{P}(\mbox{positive})}\mbox{P}(\mbox{infected}) \\
+    &=& \frac{0.976}{(0.976)(0.03) + (0.030)(0.97)}(0.03) \\
+    &=& 0.502
+    \end{eqnarray*}
+
+
+  $$
+  \mbox{P}(X|Y) = \frac{\mbox{P}(Y|X)}{\mbox{P}(X)}\mbox{P}(Y)
+  $$
+
+    \vfill
+
+\end{slide}
+
+\begin{slide}
+  \heading{Bayes' Rule for inference}
+
+  \begin{eqnarray*}
+    \mbox{P}(\theta|X) &=&
+      \frac{\mbox{P}(X|\theta)}{\mbox{P}(X)}\mbox{P}(\theta) \\
+    \theta &=& \mbox{parameter} \\
+    X &=& \mbox{data}             
+  \end{eqnarray*}
+
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{Bayes' Rule for inference}
+
+  \begin{eqnarray*}
+    \mbox{P}(\theta|X) &=&
+      \frac{\mbox{P}(X|\theta)}{\mbox{P}(X)}\mbox{P}(\theta) \\
+    \theta &=& \mbox{parameter} \\
+    X &=& \mbox{data} \\       
+    \mbox{P}(X|\theta) &=& \mbox{likelihood}
+  \end{eqnarray*}
+
+\noindent {\color{red}Maximum likelihood estimate}: value of $\theta$ that
+maximizes $\mbox{P}(X|\theta)$
+  
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{Bayes' Rule for inference}
+
+  \begin{eqnarray*}
+    \mbox{P}(\theta|X) &=&
+      \frac{\mbox{P}(X|\theta)}{\mbox{P}(X)}\mbox{P}(\theta) \\
+    \theta &=& \mbox{parameter} \\
+    X &=& \mbox{data} \\       
+    \mbox{P}(X|\theta) &=& \mbox{likelihood} \\
+    \mbox{P}(\theta) &=& \mbox{prior distribution of $\theta$} \\
+    \mbox{P}(\theta|X) &=& \mbox{posterior distribution of $\theta$} 
+  \end{eqnarray*}
+
+  \noindent {\color{red}Bayesian inference}: based on posterior
+  distribution, $\mbox{P}(\theta|X)$
+
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{Stan}
+
+  \noindent A probabilistic language for Bayesian analysis
+
+  {\tiny
+\begin{verbatim}
+data {
+  int<lower=0> k;       // number of positives observed
+  int<lower=0> N;       // number in sample
+}
+
+parameters {
+  real<lower=0, upper=1> p;   // frequency of positives in the sample
+}
+
+model {
+  // likelihood
+  //
+  k ~ binomial(N, p);
+
+  // prior
+  //
+  p ~ uniform(0.0, 1.0);
+}
+\end{verbatim}
+    }
+
+\end{slide}
+
+\end{document}

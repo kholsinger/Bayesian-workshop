@@ -1,0 +1,17 @@
+data {
+  int<lower=0> k;       // number of positives observed
+  int<lower=0> N;       // number in sample
+}
+
+parameters {
+  real<lower=0, upper=1> p;   // frequency of positives in the sample
+}
+
+model {
+  // likelihood
+  //
+  k ~ binomial(N, p);
+
+  // prior
+  p ~ uniform(0.0, 1.0);
+}

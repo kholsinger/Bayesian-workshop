@@ -1,0 +1,156 @@
+---
+title: "Bayesian workshop - 23 October 2020"
+output: html_notebook
+---
+
+## Introduction 
+
+This R notebook collects the code that we'll use for the workshop. Although you can use R notebooks in other software, it's most convenient to use them within R Studio, since the folks who created the R notebook format work at R Studio. The result is that everything you need to use an R Notebook is built into R Studio.
+
+You'll also want to install three packages, all of which are available on CRAN:
+
+1. `rstan`
+2. `rstanarm`
+3. `shinystan`
+
+Chant the usual `install.packages()` incantation, and you should be all set.[^1] We'll be using `rstanarm` because it will allow you to work with nearly all commonly encountered situations. `brms` is more flexible, but you need to have a C/C++ compiler installed in order to run it. If you don't have a C/C++ compiler installed, you won't be able to run one of the examples I include here, but it's only included for purposes of illustration, not for actual use, so I wouldn't worry about it.
+
+The setup chunk below loads the three libraries and sets a couple of options I recommend. Unless you're writing your own analysis code in `Stan`, though, you can forget about the second one.
+
+```{r setup, echo = FALSE}
+library(rstan)
+library(rstanarm)
+library(shinystan)
+
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+## Using Stan to estimate a proportion
+
+Here's the Stan code for the model. Clicking the green arrow at the right of the box will translate it to C/C++ code, compile it, and load it into R so that we can use it for analysis.
+
+```{stan output.var="binomial_model"}
+data {
+  int<lower=0> k;       // number of positives observed
+  int<lower=0> N;       // number in sample
+}
+
+parameters {
+  real<lower=0, upper=1> p;   // frequency of positives in the sample
+}
+
+model {
+  // likelihood
+  //
+  k ~ binomial(N, p);
+
+  // prior
+  p ~ uniform(0.0, 1.0);
+}
+```
+
+Once the model is compiled and loaded, running it is pretty simple. I'll store the results of the output in an object I call `fit` so that we can refer to it if we want to. Notice that the data are sent to `R` in a named list. I always call it `stan_data`, but you can call it anything you'd like.
+
+```{r}
+stan_data <- list(k = 40, N = 40)
+fit <- sampling(binomial_model,
+                data = stan_data)
+print(fit, digits_summary = 3)
+```
+
+That's the result for true positives. What about true negatives?[^2}]
+
+```{r}
+stan_data <- list(k = 0, N = 31)
+fit <- sampling(binomial_model,
+                data = stan_data,
+                refresh = 0)
+print(fit, digits_summary = 3)
+```
+
+## Estimating a mean and variance
+
+Suppose we want to estimate the mean and credible intervals for LMA in the data from Kristen's dissertation. LMA is in the column `LMA_g.cm2`. Here's how we'd do that in `Stan`.
+
+```{stan output.var="normal_model"}
+data {
+  int<lower=0> N_obs;
+  vector[N_obs] x;
+}
+
+parameters {
+  real mu;
+  real<lower=0> sigma;
+}
+
+model {
+  // likelihood
+  //
+  x ~ normal(mu, sigma);
+  
+  // priors
+  mu ~ normal(0.0, 1.0);
+  sigma ~ normal(0.0, 1.0);
+}
+```
+
+```{r}
+dat <- read.csv("Individual_Data_for_Analysis.csv",
+                header = TRUE,
+                na.strings = ".")
+
+## normally I'd use tidyverse functions to filter out the rows of data I don't want, but since you may not have
+## the tidyverse installed, I'll filter things out using base R
+##
+dat <- subset(dat, Species != "LDSA")
+dat <- subset(dat, Site != "McGregor")
+dat <- subset(dat, Site != "Jonaskop_2")
+dat <- subset(dat, !is.na(LMA_g.cm2))
+
+stan_data <- list(N_obs = nrow(dat), x = dat$LMA_g.cm2)
+fit <- sampling(normal_model,
+                data = stan_data,
+                refresh = 0)
+print(fit, digits = 3)
+```
+Compare that to what I get from `mean()` and `sd()`.
+
+```{r}
+round(mean(dat$LMA_g.cm2), 3)
+round(sd(dat$LMA_g.cm2), 3)
+```
+
+## Using rstanarm to estimate a mean and variance
+
+Hard coding in `Stan` is the hard way to do things. From now on, we'll use `rstanarm`
+
+```{r}
+fit <- stan_glm(LMA_g.cm2 ~ 1, 
+                data = dat, 
+                family = gaussian(),
+                refresh = 0)
+summary(fit, digits = 3)
+```
+
+Notice that we got an 80% credible interval (10% - 90%) instead of a 95% credible interval, but that's easy to fix.
+
+```{r}
+summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
+
+## But there are different species and populations
+
+Kristen collected these data from different species and from different sites. What if we're interested in the mean of each species at each of the sites. Sites are nested within species, so using the same syntax as for `lmer()`
+
+```{r}
+fit <- stan_glmer(LMA_g.cm2 ~ (1|Species/Site),
+                  data = dat,
+                  family = gaussian(),
+                  refresh = 0)
+summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
+
+[^1]: I _think_ installing `rstanarm` will also install `rstan`, but I don't remember for sure. Unless you start writing your own models from scratch, you won't need to load `rstan` in the future, only `rstanarm` or `brms`.
+
+[^2]: The `refresh = 0` suppresses the progress output.
