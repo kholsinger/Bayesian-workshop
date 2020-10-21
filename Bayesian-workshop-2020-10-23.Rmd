@@ -96,17 +96,9 @@ model {
 ```
 
 ```{r}
-dat <- read.csv("Individual_Data_for_Analysis.csv",
+dat <- read.csv("Protea_traits_dataset_for_workshop.csv",
                 header = TRUE,
                 na.strings = ".")
-
-## normally I'd use tidyverse functions to filter out the rows of data I don't want, but since you may not have
-## the tidyverse installed, I'll filter things out using base R
-##
-dat <- subset(dat, Species != "LDSA")
-dat <- subset(dat, Site != "McGregor")
-dat <- subset(dat, Site != "Jonaskop_2")
-dat <- subset(dat, !is.na(LMA_g.cm2))
 
 stan_data <- list(N_obs = nrow(dat), x = dat$LMA_g.cm2)
 fit <- sampling(normal_model,
