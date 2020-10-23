@@ -1,0 +1,135 @@
+---
+title: "Bayesian workshop - 6 November 2020"
+output: html_notebook
+---
+
+## Recap
+
+Last time I introduced basic ideas of Bayesian inference. We finished with a relatively simple model estimating species- and site-specific means of LMA from data that was part of Kristen's dissertation. Someone asked about ANOVA-like comparisons of means among the species. Let's work through that before moving on to linear regression and selection of covariates.
+
+
+```{r setup, echo = FALSE}
+library(rstan)
+library(rstanarm)
+library(shinystan)
+library(ggplot2)
+
+options(mc.cores = parallel::detectCores())
+```
+
+## Posterior comparisons
+
+First, we need to rerun the model from last time. I tend to store the results in an object I call `fit`, but you can give it any name that you find convenient.
+
+```{r}
+dat <- read.csv("Protea_traits_dataset_for_workshop.csv",
+                header = TRUE,
+                na.strings = ".")
+
+fit <- stan_glmer(LMA_g.cm2 ~ (1|Species/Site),
+                  data = dat,
+                  family = gaussian(),
+                  refresh = 0)
+summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
+
+We can now extract the posterior distribution. There are several ways to do it, but I find that the easiest is usually to convert the output to a data frame.
+
+```{r}
+fit_df <- as.data.frame(fit)
+colnames(fit_df)
+```
+
+As you can see, the column names in this data frame match those used in reporting the results. We can verify that they mean the same thing by looking at the mean and 95% credible intervals.
+
+```{r}
+coefficient <- colnames(fit_df)
+mean <- numeric(0)
+lo <- numeric(0)
+hi <- numeric(0)
+for (i in 1:length(coefficient)) {
+  mean[i] <- mean(fit_df[, i])
+  lo[i] <- quantile(fit_df[, i], 0.025)
+  hi[i] <- quantile(fit_df[, i], 0.975)
+}
+results <- data.frame(coefficient = coefficient,
+                      mean = mean,
+                      lo = lo,
+                      hi = hi)
+knitr::kable(results, col.names = c("Coefficient", "Mean", "2.5%", "97.5%"), digits = 3)
+```
+
+Before we go any further, let me illustrate what I mean when I say that we have the full posterior distribution for these parameters. We'll start by comparing the species effect for _Protea eximia_ (PREX), _Protea laurifolia_ (PRLA), and (my personal favorite) _Protea punctata_.
+
+```{r}
+n_samples <- nsamples(fit)
+for_plot <- data.frame(Species = c(rep("PREX", n_samples), rep("PRLA", n_samples), rep("PRPU", n_samples)),
+                       LMA = c(fit_df$`b[(Intercept) Species:PREX]`,
+                               fit_df$`b[(Intercept) Species:PRLA]`,
+                               fit_df$`b[(Intercept) Species:PRPU]`))
+p <- ggplot(for_plot, aes(x = LMA, color = Species)) + geom_line(stat = "density")
+print(p)
+```
+
+The posterior distributions for _Protea eximia_ and _Protea laurifolia_ overlap a tiny bit. If you look back, you'll see that the 95% credible intervals don't overlap, so we're confident that _Protea laurifolia_ has denser leaves than _Protea eximia_. But whhat about _Protea punctata_? That's where posterior comparisons come in.[^1]
+
+```{r}
+diff_pu_ex <- fit_df$`b[(Intercept) Species:PRPU]` - fit_df$`b[(Intercept) Species:PREX]`
+diff_pu_la <- fit_df$`b[(Intercept) Species:PRPU]` - fit_df$`b[(Intercept) Species:PRLA]`
+
+results <- data.frame(comp = c("PRPU vs. PREX", "PRPU vx. PRLA"),
+                      mean = c(mean(diff_pu_ex), mean(diff_pu_la)),
+                      lo = c(quantile(diff_pu_ex, 0.025),
+                             quantile(diff_pu_la, 0.025)),
+                      hi = c(quantile(diff_pu_ex, 0.975),
+                             quantile(diff_pu_la, 0.975)))
+knitr::kable(results, col.names = c("Comparison", "Mean", "2.5%", "97.5%"), digits = 3)
+```
+
+So in both cases the posterior distribution of the difference does not overlap 0 meaning that we have reasonbly strong evidence that _Protea punctata_ leaves are denser than those of _Protea eximia_ and less dense than those of _Protea laurifolia_.
+
+## Examining associations among traits
+
+Kristen's data includes measurements of photosynthetic rate, specifically the light-saturated rate of photosynthesis per unit area. How is the rate of photoynthesis related to wood density, stem conductance (Ks and KL), bark width, leaf thickness, leaf area, LMA, leaf length-width ratio, leaf density, stomatal length, stomatal density, and stomatal pore index.[^2]
+
+```{r}
+fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top,
+                data = dat,
+                family = gaussian(),
+                refresh = 0)
+fit_df <- as.data.frame(fit)
+summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
+
+That ran pretty easily, but it's hard to interpret the results. For example, the posterior mean of the coefficient for `KL_Units` is `r round(coef(fit)["KL_Units"], 3)`, but it's range is only `r round(min(fit_df$KL_Units), 3)` to `r round(max(fit_df$KL_Units), 3)`, while the posterior mean of the coefficient for `Area_cm2` is only `r coef(fit)["Area_cm2"]`, but it's range is `r round(min(fit_df$Area_cm2), 3)` to `r round(max(fit_df$Area_cm2), 3)`.
+
+I find it much easier to interpret the coefficients if we put them all on the same scale. Since they're all continuous, it's convenient to use `scale()` to do this for us.
+
+```{r}
+## drop the first column because it's the intercept and the last because it's sigma
+##
+for (trait in colnames(fit_df)[-c(1, ncol(fit_df))]) {
+  dat[[trait]] <- as.numeric(scale(dat[[trait]]))
+}
+fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top,
+                data = dat,
+                family = gaussian(),
+                refresh = 0)
+fit_df <- as.data.frame(fit)
+summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
+
+Now we can see that the stomatal traits have strong associations with photosynthesis. Other associations we're less sure of. How well does the model work? There are a couple of ways to check. Here's the simplest:
+
+```{r}
+mean(bayes_R2(fit))
+```
+
+As the name suggests, you can interpret that in the same way that you'd interpret an $R^2$ in a standard regression model. Another way is to use posterior predictive checking in `shinystan`.
+
+
+[^1]: See Holsinger and Wallace _Molecular Ecology_ 13:887; 2004 doi: [10.1111/j.1365-294X.2004.02052.x](https://dx.doi.org/10.1111/j.1365-294X.2004.02052.x)
+
+[^2]: We'll ignore for the time being that there are different species measured at different sites in these data. 
