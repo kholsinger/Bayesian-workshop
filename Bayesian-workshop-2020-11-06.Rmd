@@ -112,6 +112,10 @@ I find it much easier to interpret the coefficients if we put them all on the sa
 for (trait in colnames(fit_df)[-c(1, ncol(fit_df))]) {
   dat[[trait]] <- as.numeric(scale(dat[[trait]]))
 }
+## use scale to center and standardize the response, too
+##
+dat$Photo <- as.numeric(scale(dat$Photo))
+
 fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
                   Length_mm_Top + Density_mm2_Top + SPI_Top,
                 data = dat,
@@ -129,7 +133,264 @@ mean(bayes_R2(fit))
 
 As the name suggests, you can interpret that in the same way that you'd interpret an $R^2$ in a standard regression model. Another way is to use posterior predictive checking in `shinystan`.
 
+When the number of coefficients estimated isn't too large, it's helpful to visualize the posterior distributions.
+
+```{r}
+plot(fit)
+```
+
+The light blue circle is the posterior median, the dark blue bar is the central 50% credible interval, and the light blue bar is the central 90% credible interval. If you'd rather see the posterior mean and the central 80% and 95% intervals, this is all you have to do.
+
+```{r}
+plot(fit, point_est = "mean", prob = 0.8, prob_outer = 0.95)
+```
+
+## Where do priors come from?
+
+`rstanarm` allows you to specify prior distributions for the parameters, but nearly all of the time using the defaults in `stan_glm()` and the other regression functions. There are a sevearl ways you can examine them if you're interested.
+
+```{r}
+prior_summary(fit)
+```
+
+```{r}
+posterior_vs_prior(fit)
+```
+
+## Selecting variables
+
+You've probably heard of forward selection and backward selection as strategies for identifying which covariates are "worth" keeping in a multiple regression. You may also have heard of multiple subsets regression, in which all possible subsets of covariates are used and the "best" subset is chosen. Pironen and Vehtari colleagues introduced an approach that I like a lot better, the use of what are known as "regularized horseshoe priors."[^3] Using them is very easy with `rstanarm`.[^4] Before we run the model with horseshoe priors on Kristen's data, I'm going to create a really simple dummy data set and run two regression analyses, one with the default priors and one with the regularized horseshoe priors so that I can illustrate the difference between the two sets of priors.
+
+```{r}
+## -2 because the estimates include the intercept and sigma
+##
+n_traits <- ncol(fit_df) - 2
+x <- matrix(nrow = 100, ncol = n_traits) 
+for (i in 1:100) {
+  x[i, ] <- rnorm(n_traits, 0.0, 1.0)
+}
+x <- apply(x, 2, scale)
+beta <- runif(n_traits, min = -1, max = 1)
+mu <- 0.25 + x %*% beta
+y <- numeric(length(mu))
+for (i in 1:length(mu)) {
+  y[i] <- rnorm(1, mean = mu[i], sd = 0.1)
+}
+y <- as.numeric(scale(y))
+dummy_df <- data.frame(y = y, x = x)
+
+## default priors
+##
+fit_default <- stan_glm(y ~ x.1 + x.2 + x.3 + x.4 + x.5 + x.6 + x.7 + x.8 + x.9 + x.10 + x.11 + x.12,
+                        data = dummy_df,
+                        family = gaussian(),
+                        refresh = 0,
+                        prior_PD = TRUE)
+
+## regularized horseshoe priors
+##
+## This incantation sets up the regularized horseshoe prior.
+## n is the number of observations
+## D is the number of covariates
+## p0 is the expected number of important covariates
+##
+n <- nrow(dummy_df)
+D <- ncol(dummy_df) - 1
+p0 <- 3
+tau0 <- p0/(D - p0) * 1/sqrt(n)
+prior_coeff <- hs(global_scale = tau0, slab_scale = 1)
+
+fit_horseshoe <- stan_glm(y ~ x.1 + x.2 + x.3 + x.4 + x.5 + x.6 + x.7 + x.8 + x.9 + x.10 + x.11 + x.12,
+                          data = dummy_df,
+                          family = gaussian(),
+                          refresh = 0,
+                          prior = prior_coeff,
+                          prior_PD = TRUE)
+
+fit_default_df <- as.data.frame(fit_default)
+fit_horseshoe_df <- as.data.frame(fit_horseshoe)
+
+for_plot <- data.frame(Model = c(rep("Default", nrow(fit_default_df)), 
+                                 rep("Horseshoe", nrow(fit_horseshoe_df))),
+                       Beta = c(fit_default_df$x.1, fit_horseshoe_df$x.1))
+p <- ggplot(for_plot, aes(x = Beta, color = Model)) + geom_line(stat = "density")
+p
+```
+
+You can hardly see the default prior on that plot. How do we interpret this? Remember that the default prior here is a normal with mean 0 and standard deviation 2.5. That means the default prior has a peak at 0 and that about 95% of its density lies between -5 and 5. The horseshoe prior also has a peak at zero, but its peak is much higher. As a result, coefficient estimates will be strongly "pulled" towards zero unless there is strong support for them in the data, i.e., the likelihood.
+
+Let's run the default model again and compare the posterior estimates from the two models.
+
+```{r}
+dat <- read.csv("Protea_traits_dataset_for_workshop.csv",
+                header = TRUE,
+                na.strings = ".")
+
+## drop the first column because it's the intercept and the last because it's sigma
+##
+for (trait in c("Photo", "WD", "Ks", "KL_Units", "BW_dry_avg", "Thick_cm", "Area_cm2", "LMA_g.cm2", "LWR",
+                "LD_g.cm3", "Length_mm_Top", "Density_mm2_Top", "SPI_Top")) 
+{
+  dat[[trait]] <- as.numeric(scale(dat[[trait]]))
+}
+
+fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top,
+                data = dat,
+                family = gaussian(),
+                refresh = 0)
+fit_default_df <- as.data.frame(fit)
+
+## n is the number of observations
+## D is the number of covariates
+## p0 is the expected number of important covariates
+##
+n <- nrow(dat)
+D <- ncol(fit_default_df) - 2
+p0 <- 3
+tau0 <- p0/(D - p0) * 1/sqrt(n)
+prior_coeff <- hs(global_scale = tau0, slab_scale = 1)
+
+fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
+                    Length_mm_Top + Density_mm2_Top + SPI_Top,
+                  data = dat,
+                  family = gaussian(),
+                  refresh = 0,
+                  prior = prior_coeff)
+fit_hs_df <- as.data.frame(fit_hs)
+
+plot(fit) + ggtitle("Default priors")
+plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+
+median(bayes_R2(fit))
+median(bayes_R2(fit_hs))
+```
+
+This analysis suggests that only four of the covariates have reasonably reliable associations with photosynthesis: leaf thickness, leaf length/width ratio, leaf density, and stomatal length. Notice, however, that the Bayesian $R^2$ is a lot smaller in the model with regularized horshoe priors than in the model with default priors. Also notice that if we'd been thinking about it, we might have left some of the other variables out to begin with.
+
+For example,
+$$
+\eqalign{
+\mbox{LMA} &=& \frac{\mbox{leaf mass}}{\mbox{leaf area}} \\
+\mbox{leaf density} &=& \frac{\mbox{leaf mass}}{\mbox{leaf volume}} \\
+&=& \frac{\mbox{leaf mass}}{\mbox{leaf area}\times\mbox{leaf thickness}} \quad .
+}
+$$
+Similarly,
+$$
+\mbox{SPI} = \mbox{stomatal pore length}^2\times\mbox{stomatal density} \quad .
+$$
+
+Arguably then, we shouldn't include either LMA or SPI in the analyses in the first place, since they are calculated from other covariates. Let's rerun the analyses leaving them out and see what happens.
+
+```{r}
+fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LWR + LD_g.cm3 +
+                  Length_mm_Top + Density_mm2_Top,
+                data = dat,
+                family = gaussian(),
+                refresh = 0)
+fit_default_df <- as.data.frame(fit)
+
+## n is the number of observations
+## D is the number of covariates
+## p0 is the expected number of important covariates
+##
+n <- nrow(dat)
+D <- ncol(fit_default_df) - 2
+p0 <- 3
+tau0 <- p0/(D - p0) * 1/sqrt(n)
+prior_coeff <- hs(global_scale = tau0, slab_scale = 1)
+
+fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LWR + LD_g.cm3 +
+                    Length_mm_Top + Density_mm2_Top,
+                  data = dat,
+                  family = gaussian(),
+                  refresh = 0,
+                  prior = prior_coeff)
+fit_hs_df <- as.data.frame(fit_hs)
+
+plot(fit) + ggtitle("Default priors")
+plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+
+median(bayes_R2(fit))
+median(bayes_R2(fit_hs))
+```
+
+The Bayesian $R^2$ of the model with regularized horseshoe priors is quite a bit smaller than with the default parameters. As a result, the predictions for any one point are less extreme.
+
+```{r}
+pred_default <- posterior_predict(fit)
+pred_hs <- posterior_predict(fit_hs)
+
+for_plot <- data.frame(Default = apply(pred_default, 2, mean),
+                       Horseshoe = apply(pred_hs, 2, mean))
+p <- ggplot(for_plot, aes(x = Default, y = Horseshoe)) + geom_point() + 
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed")
+p
+```
+
+I placed a pretty high premium on parsimony in setting the regularized horseshoe prior. I said that I expected only 3 of the 10 (or 12 before eliminating LMA and SPI) covariates to show a strong relationship. That seems a bit extreme, since I've got traits related to stomata, to invetment in leaves, to leaf shape, to wood structure, and to water flow in stems. That's five different types of traits. Let's see what happens if I change `p0` to 5.
+
+```{r}
+## n is the number of observations
+## D is the number of covariates
+## p0 is the expected number of important covariates
+##
+n <- nrow(dat)
+D <- ncol(fit_default_df) - 2
+p0 <- 5
+tau0 <- p0/(D - p0) * 1/sqrt(n)
+prior_coeff <- hs(global_scale = tau0, slab_scale = 1)
+
+fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LWR + LD_g.cm3 +
+                    Length_mm_Top + Density_mm2_Top,
+                  data = dat,
+                  family = gaussian(),
+                  refresh = 0,
+                  prior = prior_coeff)
+fit_hs_df <- as.data.frame(fit_hs)
+
+plot(fit) + ggtitle("Default priors")
+plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+
+median(bayes_R2(fit))
+median(bayes_R2(fit_hs))
+```
+
+That didn't change the results much at all. There may be a bit more of a hint that bark width shows an association.
+
+## Model choice
+
+Leave one out cross validation is a useful way to compare models, and it's easy to do once you've fit two models that you want to compare.
+
+```{r}
+default_loo <- loo(fit)
+```
+
+Notice that warning message. Pay attention to it, and run `loo()` again.
+
+```{r}
+default_loo <- loo(fit, k_threshold = 0.7)
+```
+
+```{r}
+hs_loo <- loo(fit_hs)
+
+default_loo
+hs_loo
+loo_compare(default_loo, hs_loo)
+```
+
+Leave one out cross validation suggests that the model with regularized horseshoe priors is a bit better in terms of predictive performance than the model with default priors. To be fair, the difference is only about half the standard error, and all you can really say is that the predictive performance of the two models isn't noticeably different. 
+
+```{r}
+summary(fit_hs, digits = 3, prob = c(0.025, 0.1, 0.5, 0.9, 0.975))
+```
 
 [^1]: See Holsinger and Wallace _Molecular Ecology_ 13:887; 2004 doi: [10.1111/j.1365-294X.2004.02052.x](https://dx.doi.org/10.1111/j.1365-294X.2004.02052.x)
 
 [^2]: We'll ignore for the time being that there are different species measured at different sites in these data. 
+
+[^3]: See this [R notebook](http://darwin.eeb.uconn.edu/pages/variable-selection/horseshoe-priors.nb.html) for more information about regularized horseshoe priors. It includes a reference to the Pironen and Vehtari paper if you really want to dig into this. Be aware, however, that there's some pretty scary math in that paper. It's not easy to read.
+
+[^4]: I pretty sure you can use them in `brms`, but I don't have direct experience with that.
