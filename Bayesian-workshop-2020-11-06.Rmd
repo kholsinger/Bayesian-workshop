@@ -125,13 +125,7 @@ fit_df <- as.data.frame(fit)
 summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
 ```
 
-Now we can see that the stomatal traits have strong associations with photosynthesis. Other associations we're less sure of. How well does the model work? There are a couple of ways to check. Here's the simplest:
-
-```{r}
-mean(bayes_R2(fit))
-```
-
-As the name suggests, you can interpret that in the same way that you'd interpret an $R^2$ in a standard regression model. Another way is to use posterior predictive checking in `shinystan`.
+Now we can see that the stomatal traits have strong associations with photosynthesis. Other associations we're less sure of. How well does the model work? The easiest way is to use posterior predictive checking in `shinystan`.
 
 When the number of coefficients estimated isn't too large, it's helpful to visualize the posterior distributions.
 
@@ -261,12 +255,9 @@ fit_hs_df <- as.data.frame(fit_hs)
 
 plot(fit) + ggtitle("Default priors")
 plot(fit_hs) + ggtitle("Regularized horseshoe priors")
-
-median(bayes_R2(fit))
-median(bayes_R2(fit_hs))
 ```
 
-This analysis suggests that only four of the covariates have reasonably reliable associations with photosynthesis: leaf thickness, leaf length/width ratio, leaf density, and stomatal length. Notice, however, that the Bayesian $R^2$ is a lot smaller in the model with regularized horshoe priors than in the model with default priors. Also notice that if we'd been thinking about it, we might have left some of the other variables out to begin with.
+This analysis suggests that only four of the covariates have reasonably reliable associations with photosynthesis: leaf thickness, leaf length/width ratio, leaf density, and stomatal length.
 
 For example,
 $$
@@ -311,12 +302,9 @@ fit_hs_df <- as.data.frame(fit_hs)
 
 plot(fit) + ggtitle("Default priors")
 plot(fit_hs) + ggtitle("Regularized horseshoe priors")
-
-median(bayes_R2(fit))
-median(bayes_R2(fit_hs))
 ```
 
-The Bayesian $R^2$ of the model with regularized horseshoe priors is quite a bit smaller than with the default parameters. As a result, the predictions for any one point are less extreme.
+The predictions from the two models are highly correlated, but for any one point the predictions are less extreme in the model with regularized horseshoe priors.
 
 ```{r}
 pred_default <- posterior_predict(fit)
@@ -352,16 +340,13 @@ fit_hs_df <- as.data.frame(fit_hs)
 
 plot(fit) + ggtitle("Default priors")
 plot(fit_hs) + ggtitle("Regularized horseshoe priors")
-
-median(bayes_R2(fit))
-median(bayes_R2(fit_hs))
 ```
 
-That didn't change the results much at all. There may be a bit more of a hint that bark width shows an association.
+That didn't change the results much at all. There may be a bit more of a hint that bark width shows an association than there was before, but it's still only a hint.
 
 ## Model choice
 
-Leave one out cross validation is a useful way to compare models, and it's easy to do once you've fit two models that you want to compare.
+Leave one out cross validation (LOO) is a useful way to compare models, and it's easy to do once you've fit two models that you want to compare.
 
 ```{r}
 default_loo <- loo(fit)
@@ -381,7 +366,7 @@ hs_loo
 loo_compare(default_loo, hs_loo)
 ```
 
-Leave one out cross validation suggests that the model with regularized horseshoe priors is a bit better in terms of predictive performance than the model with default priors. To be fair, the difference is only about half the standard error, and all you can really say is that the predictive performance of the two models isn't noticeably different. 
+LOO suggests that the model with regularized horseshoe priors is a bit better in terms of predictive performance than the model with default priors. To be fair, the difference is only about half the standard error, and all you can really say is that the predictive performance of the two models isn't noticeably different. 
 
 ```{r}
 summary(fit_hs, digits = 3, prob = c(0.025, 0.1, 0.5, 0.9, 0.975))
