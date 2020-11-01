@@ -13,8 +13,14 @@ library(rstan)
 library(rstanarm)
 library(shinystan)
 library(ggplot2)
+library(bayesplot)
+library(egg)
 
 options(mc.cores = parallel::detectCores())
+
+## I make it a practice to throw this in the start of every notebook to make sure I'm
+## starting with a clean slate
+rm(list = ls())
 ```
 
 ## Posterior comparisons
@@ -33,7 +39,7 @@ fit <- stan_glmer(LMA_g.cm2 ~ (1|Species/Site),
 summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
 ```
 
-We can now extract the posterior distribution. There are several ways to do it, but I find that the easiest is usually to convert the output to a data frame.
+We can now extract the posterior distribution. There are several ways to do it, but I find that the easiest is often to convert the output to a data frame.
 
 ```{r}
 fit_df <- as.data.frame(fit)
@@ -59,19 +65,20 @@ results <- data.frame(coefficient = coefficient,
 knitr::kable(results, col.names = c("Coefficient", "Mean", "2.5%", "97.5%"), digits = 3)
 ```
 
-Before we go any further, let me illustrate what I mean when I say that we have the full posterior distribution for these parameters. We'll start by comparing the species effect for _Protea eximia_ (PREX), _Protea laurifolia_ (PRLA), and (my personal favorite) _Protea punctata_.
+Before we go any further, let me illustrate what I mean when I say that we have the full posterior distribution for these parameters. We'll start by comparing the species effect for _Protea eximia_ (PREX), _Protea laurifolia_ (PRLA), and (my personal favorite) _Protea punctata_ (PRPU).
 
 ```{r}
 n_samples <- nsamples(fit)
-for_plot <- data.frame(Species = c(rep("PREX", n_samples), rep("PRLA", n_samples), rep("PRPU", n_samples)),
+for_plot <- data.frame(Species = c(rep("PREX", n_samples), rep("PRLA", n_samples), 
+                                   rep("PRPU", n_samples)),
                        LMA = c(fit_df$`b[(Intercept) Species:PREX]`,
                                fit_df$`b[(Intercept) Species:PRLA]`,
                                fit_df$`b[(Intercept) Species:PRPU]`))
-p <- ggplot(for_plot, aes(x = LMA, color = Species)) + geom_line(stat = "density")
+p <- ggplot(for_plot, aes(x = LMA, color = Species, fill = Species)) + geom_density(alpha = 0.2)
 print(p)
 ```
 
-The posterior distributions for _Protea eximia_ and _Protea laurifolia_ overlap a tiny bit. If you look back, you'll see that the 95% credible intervals don't overlap, so we're confident that _Protea laurifolia_ has denser leaves than _Protea eximia_. But whhat about _Protea punctata_? That's where posterior comparisons come in.[^1]
+The posterior distributions for _Protea eximia_ and _Protea laurifolia_ overlap a tiny bit. If you look back, you'll see that the 95% credible intervals don't overlap, so we're confident that _Protea laurifolia_ has denser leaves than _Protea eximia_. But what about _Protea punctata_? That's where posterior comparisons come in.[^1]
 
 ```{r}
 diff_pu_ex <- fit_df$`b[(Intercept) Species:PRPU]` - fit_df$`b[(Intercept) Species:PREX]`
@@ -93,7 +100,8 @@ So in both cases the posterior distribution of the difference does not overlap 0
 Kristen's data includes measurements of photosynthetic rate, specifically the light-saturated rate of photosynthesis per unit area. How is the rate of photoynthesis related to wood density, stem conductance (Ks and KL), bark width, leaf thickness, leaf area, LMA, leaf length-width ratio, leaf density, stomatal length, stomatal density, and stomatal pore index.[^2]
 
 ```{r}
-fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3 +
+fit <- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + 
+                  LWR + LD_g.cm3 +
                   Length_mm_Top + Density_mm2_Top + SPI_Top,
                 data = dat,
                 family = gaussian(),
@@ -102,7 +110,7 @@ fit_df <- as.data.frame(fit)
 summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
 ```
 
-That ran pretty easily, but it's hard to interpret the results. For example, the posterior mean of the coefficient for `KL_Units` is `r round(coef(fit)["KL_Units"], 3)`, but it's range is only `r round(min(fit_df$KL_Units), 3)` to `r round(max(fit_df$KL_Units), 3)`, while the posterior mean of the coefficient for `Area_cm2` is only `r coef(fit)["Area_cm2"]`, but it's range is `r round(min(fit_df$Area_cm2), 3)` to `r round(max(fit_df$Area_cm2), 3)`.
+That ran pretty easily, but it's hard to interpret the results. For example, the posterior mean of the coefficient for `KL_Units` is `r round(coef(fit)["KL_Units"], 3)`, but it's range is `r round(min(fit_df$KL_Units), 3)` to `r round(max(fit_df$KL_Units), 3)`, while the posterior mean of the coefficient for `Area_cm2` is only `r coef(fit)["Area_cm2"]`, but it's range is `r round(min(fit_df$Area_cm2), 3)` to `r round(max(fit_df$Area_cm2), 3)`.
 
 I find it much easier to interpret the coefficients if we put them all on the same scale. Since they're all continuous, it's convenient to use `scale()` to do this for us.
 
@@ -141,7 +149,7 @@ plot(fit, point_est = "mean", prob = 0.8, prob_outer = 0.95)
 
 ## Where do priors come from?
 
-`rstanarm` allows you to specify prior distributions for the parameters, but nearly all of the time using the defaults in `stan_glm()` and the other regression functions. There are a sevearl ways you can examine them if you're interested.
+`rstanarm` allows you to specify prior distributions for the parameters, but most of the time I use the defaults in `stan_glm()` and the other regression functions. There are a couple of ways you can examine them if you're interested.
 
 ```{r}
 prior_summary(fit)
@@ -259,7 +267,7 @@ plot(fit_hs) + ggtitle("Regularized horseshoe priors")
 
 This analysis suggests that only four of the covariates have reasonably reliable associations with photosynthesis: leaf thickness, leaf length/width ratio, leaf density, and stomatal length.
 
-For example,
+That being said, we might want to leave a couple of traits out of this analysis. For example,
 $$
 \eqalign{
 \mbox{LMA} &=& \frac{\mbox{leaf mass}}{\mbox{leaf area}} \\
@@ -352,7 +360,7 @@ Leave one out cross validation (LOO) is a useful way to compare models, and it's
 default_loo <- loo(fit)
 ```
 
-Notice that warning message. Pay attention to it, and run `loo()` again.
+You might get a warning message from `loo()`. If you do, pay attention to it, and run `loo()` again.
 
 ```{r}
 default_loo <- loo(fit, k_threshold = 0.7)
@@ -372,10 +380,38 @@ LOO suggests that the model with regularized horseshoe priors is a bit better in
 summary(fit_hs, digits = 3, prob = c(0.025, 0.1, 0.5, 0.9, 0.975))
 ```
 
+## Comparing predictions
+
+We can also directly compare predictions with observations in both models. In the figures that follow `y` is the observed value, and `Average y_rep` is the mean of the posterior predictions for that observation. Remember that we got `pred_default` and `pred_hs` above using `posterior_predict()`.
+
+```{r}
+default <- ppc_scatter_avg(dat$Photo, pred_default) + ggtitle("Default priors")
+horseshoe <- ppc_scatter_avg(dat$Photo, pred_hs) + ggtitle("Regularized horsehoe priors")
+ggarrange(default, horseshoe, nrow = 1)
+```
+
+You can see that the slope of the relationship between `y` and `y_rep` is steeper in the model with default priors. That's because ***all*** of the covariates are contributing to the prediction in the model with default priors, while only 5 of them are contributing to the prediction with horseshoe priors. The model comparison using `loo()` suggested that in terms of predicting new observations there's little difference between the models. As suggested by the different slopes, the model with default priors does, however, fit the observed data better than the model with regularized horseshoe priors, as we can see by comparing $R^2$.
+
+```{r}
+R2_default <-bayes_R2(fit)
+R2_horseshoe <- bayes_R2(fit_hs)
+round(median(R2_default), 3)
+round(median(R2_horseshoe), 3)
+```
+
+Having said that, if we plot the whole posterior distribution, the overall fit really isn't as different as you might thing from just looking at the median.
+
+```{r}
+for_plot <- data.frame(Model = c(rep("Default", length(R2_default)),
+                                 rep("Horseshoe", length(R2_horseshoe))),
+                       R2 = c(R2_default, R2_horseshoe))
+ggplot(for_plot, aes(x = R2, color = Model, fill = Model)) + geom_density(alpha = 0.2)
+```
+
 [^1]: See Holsinger and Wallace _Molecular Ecology_ 13:887; 2004 doi: [10.1111/j.1365-294X.2004.02052.x](https://dx.doi.org/10.1111/j.1365-294X.2004.02052.x)
 
 [^2]: We'll ignore for the time being that there are different species measured at different sites in these data. 
 
 [^3]: See this [R notebook](http://darwin.eeb.uconn.edu/pages/variable-selection/horseshoe-priors.nb.html) for more information about regularized horseshoe priors. It includes a reference to the Pironen and Vehtari paper if you really want to dig into this. Be aware, however, that there's some pretty scary math in that paper. It's not easy to read.
 
-[^4]: I pretty sure you can use them in `brms`, but I don't have direct experience with that.
+[^4]: You can also use regularized horseshoe priors in `brms`. The syntax is slightly different, but you can chant the same incantation as I use here to set `global_scale`. It also has a couple of other options that you'll want to investigate if you use `brms`.
