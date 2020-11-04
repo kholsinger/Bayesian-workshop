@@ -58,6 +58,7 @@ vignettes/*.pdf
 *.log
 *.out
 *.synctex.gz
+*converted-to.pdf
 
 ## Miscellaneous files
 ##

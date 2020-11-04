@@ -238,4 +238,80 @@ model {
 
 \end{slide}
 
+\begin{slide}
+  \heading{Posterior comparisons}
+
+  \noindent We have a posterior distribution of LMA in {\it Protea
+    eximia\/} and {\it Protea punctata}
+
+  \begin{enumerate}
+
+    \item Set $i = 1$
+
+    \item Take one sample at random from the posterior distribution of
+      {\it Protea eximia\/}, one from the posterior distribution of
+      {\it Protea punctata\/}, take the difference and record it as
+      $\delta_i$.
+
+    \item Increment $i$ by 1, and return to step 2 until $i$ is a
+      ``big'' number.
+
+    \item The set of $\delta_i$ you have is now a sample from the
+      posterior distribution of the {\it difference}. If the 95\%
+      credible interval is strictly positive, you have evidence that
+      the LMA of {\it P. eximia\/} is bigger than the LMA of {\it
+        P. punctata}. 
+
+  \end{enumerate}
+
+  \vfill
+  
+\end{slide}
+
+\begin{slide}
+  \heading{Scaling variables}
+
+  \noindent {\tt scale()} sets mean to 0, standard deviation to 1
+
+  \noindent Interpretation of regression coefficient:
+
+  $$
+  y_i = \beta_0 + \beta_1 x_i
+  $$
+  
+  a 1-sd unit change in $x$ leads to a $\beta_1$-sd unit change in $y$
+
+\end{slide}
+
+\begin{slide}
+  \heading{Horseshoe prior}
+
+  \noindent Shrinkage factor: How much a regression coefficient is
+  ``shrunk'' towards 0. Lies between 0 and 1.
+
+  \begin{center}
+    \includegraphics[width=0.6\textwidth]{horseshoe-prior.eps}
+  \end{center}
+
+  Pironen \& Vehtari, {\it Electronic Journal of Statistics}
+  11:5018-5051; 2017.
+
+\end{slide}
+
+\begin{slide}
+  \heading{Leave-one out cross-validation}
+
+  \noindent Cross-validation: Leaving some data out of the model, then
+  ``cross-validating'' the model by seeing how well you can predict
+  the data you left out.
+
+  \noindent Leave-one out cross-validation: Leave each observation out
+  of the model, fit the model, predict the observation, and compare
+  prediction to observed {\it for every observation in the data set}.
+
+  \noindent {\tt loo()} provides a sneaky way of doing this while only
+  fitting the model once.
+
+\end{slide}
+
 \end{document}
