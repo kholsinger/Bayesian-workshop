@@ -15,7 +15,6 @@
 
 \newcommand{\heading}[1]{{\color{red}\large\bf#1}}
 
-
 \title{\color{red}Introduction to Bayesian inference for evolutionists \& ecologists}
 \author{Kent E. Holsinger \\
   Department of Ecology \& Evolutionary Biology, U-3043 \\
@@ -295,6 +294,32 @@ model {
 
   Pironen \& Vehtari, {\it Electronic Journal of Statistics}
   11:5018-5051; 2017.
+
+\end{slide}
+
+\begin{slide}
+  \heading{Model choice}
+
+\noindent {\bf Compromise between goodness of fit and number of parameters}
+
+AIC:
+\begin{eqnarray*}
+  -2\log(\mbox{P}(X|\theta)) + 2k = D(X|\theta) + 2k
+\end{eqnarray*}
+DIC:
+\begin{eqnarray*}
+D(X|\hat\theta) + pD \\
+pD &=& D(X|\hat\theta) - \widehat{D(X|\theta)}
+\end{eqnarray*}
+
+\vfill
+
+\noindent {\bf Predictive ability}
+
+WAIC (widely applicable information criterion): See Pironen \&
+Vehtari, {\it Statistics and Computing} 27:711-735; 2017 for details
+
+LOO-CV: equivalent to WAIC
 
 \end{slide}
 
