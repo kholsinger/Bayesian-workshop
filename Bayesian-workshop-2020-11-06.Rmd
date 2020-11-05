@@ -93,7 +93,7 @@ results <- data.frame(comp = c("PRPU vs. PREX", "PRPU vx. PRLA"),
 knitr::kable(results, col.names = c("Comparison", "Mean", "2.5%", "97.5%"), digits = 3)
 ```
 
-So in both cases the posterior distribution of the difference does not overlap 0 meaning that we have reasonbly strong evidence that _Protea punctata_ leaves are denser than those of _Protea eximia_ and less dense than those of _Protea laurifolia_.
+So in both cases the posterior distribution of the difference does not overlap 0 meaning that we have reasonably strong evidence that _Protea punctata_ leaves are denser than those of _Protea eximia_ and less dense than those of _Protea laurifolia_.
 
 ## Examining associations among traits
 
@@ -261,8 +261,9 @@ fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 
                   prior = prior_coeff)
 fit_hs_df <- as.data.frame(fit_hs)
 
-plot(fit) + ggtitle("Default priors")
-plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+default <- plot(fit) + ggtitle("Default priors")
+horseshoe <- plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+ggarrange(default, horseshoe, nrow = 1)
 ```
 
 This analysis suggests that only four of the covariates have reasonably reliable associations with photosynthesis: leaf thickness, leaf length/width ratio, leaf density, and stomatal length.
@@ -308,8 +309,9 @@ fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 
                   prior = prior_coeff)
 fit_hs_df <- as.data.frame(fit_hs)
 
-plot(fit) + ggtitle("Default priors")
-plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+default <- plot(fit) + ggtitle("Default priors")
+horseshoe <- plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+ggarrange(default, horseshoe, nrow = 1)
 ```
 
 The predictions from the two models are highly correlated, but for any one point the predictions are less extreme in the model with regularized horseshoe priors.
@@ -346,8 +348,9 @@ fit_hs<- stan_glm(Photo ~ WD + Ks + KL_Units + BW_dry_avg + Thick_cm + Area_cm2 
                   prior = prior_coeff)
 fit_hs_df <- as.data.frame(fit_hs)
 
-plot(fit) + ggtitle("Default priors")
-plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+default <- plot(fit) + ggtitle("Default priors")
+horseshoe <- plot(fit_hs) + ggtitle("Regularized horseshoe priors")
+ggarrange(default, horseshoe, nrow = 1)
 ```
 
 That didn't change the results much at all. There may be a bit more of a hint that bark width shows an association than there was before, but it's still only a hint.
