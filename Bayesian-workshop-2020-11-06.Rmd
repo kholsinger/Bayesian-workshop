@@ -110,7 +110,7 @@ fit_df <- as.data.frame(fit)
 summary(fit, digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975))
 ```
 
-That ran pretty easily, but it's hard to interpret the results. For example, the posterior mean of the coefficient for `KL_Units` is `r round(coef(fit)["KL_Units"], 3)`, but it's range is `r round(min(fit_df$KL_Units), 3)` to `r round(max(fit_df$KL_Units), 3)`, while the posterior mean of the coefficient for `Area_cm2` is only `r coef(fit)["Area_cm2"]`, but it's range is `r round(min(fit_df$Area_cm2), 3)` to `r round(max(fit_df$Area_cm2), 3)`.
+That ran pretty easily, but it's hard to interpret the results. For example, the posterior mean of the coefficient for `KL_Units` is -2125, but the range of `KL_Units` is `r round(min(fit_df$KL_Units), 3)` to `r round(max(fit_df$KL_Units), 3)`, while the posterior mean of the coefficient for `Area_cm2` is only 0.006, but the range of `Area_cm2` is `r round(min(fit_df$Area_cm2), 3)` to `r round(max(fit_df$Area_cm2), 3)`.
 
 I find it much easier to interpret the coefficients if we put them all on the same scale. Since they're all continuous, it's convenient to use `scale()` to do this for us.
 
