@@ -1,0 +1,282 @@
+---
+title: "Bayesian workshop - 20 November 2020"
+output: html_notebook
+---
+
+## An analysis a non-Bayesian would find very difficult to do
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+library(rstan)
+library(brms)
+library(rstanarm)
+library(shinystan)
+library(ggplot2)
+library(bayesplot)
+library(egg)
+library(corrplot)
+library(GGally)
+
+options(mc.cores = parallel::detectCores())
+
+## I make it a practice to throw this in the start of every notebook to make sure I'm
+## starting with a clean slate
+rm(list = ls())
+```
+
+So far we've seen analyses that could also be done using non-Bayesian methods, with `lm()`, `aov()`, or `lmer()`. I've illustrated some of the advantages of Bayesian approaches, but I haven't illustrated what I meant when I said "You can build on simple models to do things that are much more complicated."
+
+Let's start by reading in the data and scaling it.
+
+```{r}
+dat <- read.csv("Protea_traits_dataset_for_workshop.csv",
+                header = TRUE,
+                na.strings = ".")
+
+phys_traits <- c("Ks", "KL_Units", "Photo", "Cond", "WUE_Intrinsic")
+morph_traits <- c("WD", "BW_dry_avg", "Thick_cm", "Area_cm2", "LMA_g.cm2", "LWR", "LD_g.cm3",
+                  "Length_mm_Top", "Density_mm2_Top", "SPI_Top")
+
+for (trait in c(phys_traits, morph_traits)) {
+  dat[[trait]] <- as.numeric(scale(dat[[trait]]))
+}
+```
+
+Now let's see how each physiological trait is associated with the morphological traits.[^1]
+
+```{r}
+fit <- vector(mode = "list", length = length(phys_traits))
+names(fit) <- phys_traits
+plots <- vector(mode = "list", length = length(phys_traits))
+names(plots) <- phys_traits
+for (phys in phys_traits) {
+  model_formula <- paste(phys, " ~ ", paste(morph_traits, collapse = " + "), sep = "")
+  fit[[phys]] <- stan_glm(model_formula,
+                          data = dat,
+                          family = gaussian(),
+                          refresh = 0)
+  print(summary(fit[[phys]], digits = 3, probs = c(0.025, 0.1, 0.5, 0.9, 0.975)))
+  plots[[phys]] <- plot(fit[[phys]])
+}
+ggarrange(plots = plots, nrow = 3)
+```
+
+We know from first principles that some of the response variables will be related to one another, e.g., `Photo` and `Cond`. Let's put the residuals into a dataframe see whether they're correlated too.
+
+```{r message = FALSE}
+protea_resid <- data.frame(Individual = seq(from = 1, to = nrow(dat)),
+                           Ks = residuals(fit$Ks),
+                           KL = residuals(fit$KL_Units),
+                           Photo = residuals(fit$Photo),
+                           Cond = residuals(fit$Cond),
+                           WUE = residuals(fit$WUE_Intrinsic))
+corrplot(cor(protea_resid[, c("Ks", "KL", "Photo", "Cond", "WUE")]), order = "hclust")
+ggpairs(protea_resid[, c("Photo", "Cond", "WUE", "Ks", "KL")])
+```
+
+Not surprisingly, the residuals of `Ks` and `KL` are strongly correlated, and the residuals of `Cond` and `WUE` are strongly negatively correlated. The residuals of `Photo` have a noticeable positive correlation with those of `Cond`. In fact, the residuals of `Cond` have noticeable associations with every response. 
+
+What that all means is that even after accounting for the influence of the morphological traits on these responses, the responses still remain associated,. As a result, it may be a little misleading to look at the individual associations of physiological responses with morphological traits. Mathematically, what we've done is this:
+
+$$
+y_i = \beta_0 + \sum_k \beta_k X_{ik} + \epsilon_i \quad ,
+$$
+
+where $y_i$ is the physiological response in individual $i$, and $\epsilon_i$ is the random error, which we assumed was $\mbox{N}(0, \sigma^2)$. We also implicitly assumed that $\epsilon_i$ in the regression of $Ks$ on morphological traits was independent of $\epsilon_i$ in the regression of other physiological responses. The correlation analysis above shows us how problematic that assumption is. What we should do instead is fit a model like this:
+
+$$
+y_{it} = \beta_{0t} + \sum_k \beta_{kt}X_{ikt} + \epsilon_{it} \quad ,
+$$
+
+where the subscript $t$ refers to the different physiological responses and $\epsilon_{it}$ is multivariate normal, $\mbox{MVN}({\bf 0}, \Sigma)$. How do we fit that? `brms` makes it easy.
+
+```{r message = FALSE}
+## the individual regressions
+##
+bf_Ks <- bf(Ks ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top)
+bf_KL <- bf(KL_Units ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top)
+bf_Photo <- bf(Photo ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top)
+bf_Cond <- bf(Cond ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top)
+bf_WUE <- bf(WUE_Intrinsic ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top)
+
+## the brms model
+##
+fit_brm <- brm(bf_Ks + bf_KL + bf_Photo + bf_Cond + bf_WUE + set_rescor(TRUE), 
+           data = dat,
+           chains = 4,
+           cores = 4,
+           silent = TRUE,
+           refresh = 0,
+           control = list(adapt_delta = 0.99))
+summary(fit_brm, digits = 3)
+```
+
+To make the results easier to compare let's plot the posterior means for coefficients from the separate regression against the results from the multiple response regression for each response.
+
+```{r}
+brm_df <- as.data.frame(fit_brm)
+for_plot <- data.frame(Response = NULL,
+                       Univariate = NULL,
+                       Multivariate = NULL,
+                       Trait = NULL)
+for (phys in phys_traits) {
+  tmp <- as.data.frame(fit[[phys]])
+  for(trait in colnames(tmp)) {
+    if (trait == "sigma") {
+      next;
+    } 
+    if (trait == "(Intercept)") {
+      trait_brm <- "Intercept"
+    } else {
+      trait_brm <- trait
+    }
+    if (phys == "KL_Units") {
+      brm_var <- paste("b_KLUnits_", trait_brm, sep = "")
+    } else if (phys == "WUE_Intrinsic") {
+      brm_var <- paste("b_WUEIntrinsic_", trait_brm, sep = "")
+    } else {
+      brm_var <- paste("b_", phys, "_", trait_brm, sep = "")
+    }
+    tmp_df <- data.frame(Response = phys,
+                         Univariate = mean(tmp[[trait]]),
+                         Multivariate = mean(brm_df[[brm_var]]),
+                         Trait = trait)
+    for_plot <- rbind(for_plot, tmp_df)
+  }
+}
+  
+p <- ggplot(for_plot, aes(x = Univariate, y = Multivariate)) +
+  geom_point() + 
+  geom_abline(slope = 1.0, intercept = 0.0, linetype = "dashed") +
+  facet_wrap(~ Response, scales = "free")
+print(p)
+```
+
+The point estimates are very similar, so why bother with the multivariate response? So far, there really isn't much point, because all we've done is
+
+1. Fit the five regressions simultaneously.
+2. Estimate the residual correlations as part of fitting the model.
+
+Let's see what happens if we add the random site effect nested within species using the familiar `lmer()` or `stan_glmer()` syntax.
+
+```{r message = FALSE}
+## the individual regressions
+##
+bf_Ks <- bf(Ks ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + (1|Species/Site))
+bf_KL <- bf(KL_Units ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + (1|Species/Site))
+bf_Photo <- bf(Photo ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + (1|Species/Site))
+bf_Cond <- bf(Cond ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + (1|Species/Site))
+bf_WUE <- bf(WUE_Intrinsic ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + (1|Species/Site))
+
+## the brms model
+##
+fit_brm_rnd <- brm(bf_Ks + bf_KL + bf_Photo + bf_Cond + bf_WUE + set_rescor(TRUE), 
+                   data = dat,
+                   chains = 4,
+                   cores = 4,
+                   silent = TRUE,
+                   refresh = 0,
+                   control = list(adapt_delta = 0.99))
+summary(fit_brm_rnd, digits = 3)
+```
+
+You can see that the estimated residual correlations are now a bit smaller, but they're not gone. If you've been paying attention, you may also be wondering about the random effects. "I put them in separately for each regression. Wouldn't I get the same results if I just ran five regressions with random effects?" I won't run the those regressions. I'll let you do that on your own, but the answer is yes. What's missing is that the random effects may be correlated across regressions. 
+
+`brms` extended the basic `lmer()` syntax to allow us to allow random effects to be correlated across regressions.[^2] Rather than writing `(1|Species/Site)` in each model to nest site within species I'd like to write `(1|ID|Species/Site)` to indicate that the random effects are correlated. Unfortunately, it's not quite that simple. Remember that `(1|Species/Site)` is equivalent to `(1|Species) + (1|Species:Site)`. Each grouping factor needs its own `ID`, so we'll need to write `(1|ID1|Species) + (1|ID2|Species:Site)`.[^3}
+
+Let's see what happens when we add an `ID` term to the random effects.
+
+```{r message = FALSE}
+bf_Ks <- bf(Ks ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + 
+                  (1|ID1|Species) + (1|ID2|Species:Site))
+bf_KL <- bf(KL_Units ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + 
+                  (1|ID1|Species) + (1|ID2|Species:Site))
+bf_Photo <- bf(Photo ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + 
+                  (1|ID1|Species) + (1|ID2|Species:Site))
+bf_Cond <- bf(Cond ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + 
+                  (1|ID1|Species) + (1|ID2|Species:Site))
+bf_WUE <- bf(WUE_Intrinsic ~ WD + BW_dry_avg + Thick_cm + Area_cm2 + LMA_g.cm2 + LWR + LD_g.cm3  +
+                  Length_mm_Top + Density_mm2_Top + SPI_Top + 
+                  (1|ID1|Species) + (1|ID2|Species:Site))
+
+## the brms model
+##
+fit_brm_multi <- brm(bf_Ks + bf_KL + bf_Photo + bf_Cond + bf_WUE + set_rescor(TRUE), 
+                     data = dat,
+                     chains = 4,
+                     cores = 4,
+                     silent = TRUE,
+                     refresh = 0,
+                     control = list(adapt_delta = 0.99))
+summary(fit_brm_multi, digits = 3)
+```
+
+Let's compare the coefficient estimates from the multiple response model in which random effects are treated independently across the responses with the one we just fit in which they are correlated.
+
+```{r}
+brm_df_rnd <- as.data.frame(fit_brm_rnd)
+brm_df <- as.data.frame(fit_brm_multi)
+for_plot <- data.frame(Response = NULL,
+                       Independent = NULL,
+                       Correlated = NULL,
+                       Trait = NULL)
+for (phys in phys_traits) {
+  tmp <- as.data.frame(fit[[phys]])
+  for(trait in colnames(tmp)) {
+    if (trait == "sigma") {
+      next;
+    } 
+    if (trait == "(Intercept)") {
+      trait_brm <- "Intercept"
+    } else {
+      trait_brm <- trait
+    }
+    if (phys == "KL_Units") {
+      brm_var <- paste("b_KLUnits_", trait_brm, sep = "")
+    } else if (phys == "WUE_Intrinsic") {
+      brm_var <- paste("b_WUEIntrinsic_", trait_brm, sep = "")
+    } else {
+      brm_var <- paste("b_", phys, "_", trait_brm, sep = "")
+    }
+    tmp_df <- data.frame(Response = phys,
+                         Independent = mean(brm_df_rnd[[brm_var]]),
+                         Correlated = mean(brm_df[[brm_var]]),
+                         Trait = trait)
+    for_plot <- rbind(for_plot, tmp_df)
+  }
+}
+  
+p <- ggplot(for_plot, aes(x = Independent, y = Correlated)) +
+  geom_point() + 
+  geom_abline(slope = 1.0, intercept = 0.0, linetype = "dashed") +
+  facet_wrap(~ Response, scales = "free")
+print(p)
+```
+
+Given that the residual correlations in our latest model are pretty similar to what we saw before, it's not too surprising that the full multiple response model, including correlations of random effects, doesn't tell us anything different from what we could have concluded from five individual linear regressions. 
+
+In retrospect, that probably shouldn't be surprising for this data set. There are only 151 observations[^4], and we're fitting a regression with 10 independent variables ***plus*** a random site effect nested within a random species effect. As a result, the estimates of random effects are fairly imprecise. The credible intervals for species-level standard deviations range from about 0.03 to 2.5 for all of the regressions, and for the site-level standard deviations they range from about 0.3 to 2.0. Given how uncertain those estimates are, we shouldn't be surprised that we are even more uncertain about how strongly the random effects are correlated across responses.
+
+```{r}
+```
+
+[^1]: Remember that for a "real" analysis, we'd include a random site effect nested within a random species effect.
+
+[^2]: See Bürkner (https://cran.r-project.org/web/packages/brms/vignettes/brms_multilevel.pdf)[https://cran.r-project.org/web/packages/brms/vignettes/brms_multilevel.pdf] for details.
+
+[^3]: There's probably not a reason to do this here, but if we had good reason to believe _a priori_ that some of the response variables were likely to be correlated and that others were likely to be independent, we could give different `ID` labels to the different sets of response variables.
+
+[^4]: Apologies to Kristen. She collected as many observations as she could given the physiological measurements she was making.
